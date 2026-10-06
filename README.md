@@ -1,3 +1,16 @@
+> [!IMPORTANT]
+> **Hey, thanks for stopping by. This version is no longer maintained.**
+>
+> I owe you an explanation, because this repo went quiet without a word, and that wasn't fair to the people who used it.
+>
+> **What happened:** CS2AC and CS2FOW started here as open-source projects, and I loved building them in the open. But over time, people copied the code and sold it as their own without respecting the license. Cheat developers read the detection code to see exactly what gets caught. And keeping an anti-cheat alive for every CS2 update turned into a full-time job. So I moved development to closed source, where I could protect the work and keep going. I never stopped working on it.
+>
+> **If you still run this version:** please know it isn't updated for current CS2 builds anymore. It can break after a game update, or quietly protect less than you'd expect.
+>
+> **The current CS2AC and CS2FOW** are alive and getting better every week. You can try them free for 7 days at [karola3vax.com](https://karola3vax.com). And if you have questions, want help switching, or just want to say hi, come find me on [Discord](https://discord.com/invite/gaAUsKAuqQ).
+>
+> Thank you to everyone who starred, tested, reported bugs and believed in this project early on. It's a big part of why it still exists.
+
 <div align="center">
 
 <img src="docs/cs2ac-logo.png" width="760" alt="CS2AC">
