@@ -360,7 +360,7 @@ bool CS2ACPlugin::QueryRunning(char *error, size_t maxlen)
 bool CS2ACPlugin::Activate(char *error, size_t maxlen, bool late)
 {
 	std::vector<std::string> missing;
-	if (!g_SHPtr)
+	if (!KHook::__exported__khook)
 	{
 		missing.emplace_back("Metamod's hook service is unavailable.");
 	}
@@ -1063,7 +1063,7 @@ void CS2ACPlugin::ResetRuntime()
 
 void CS2ACPlugin::CleanupRuntime()
 {
-	// Any exceptional SourceHook that survives manual cleanup must remain inert
+	// Any exceptional KHook that survives manual cleanup must remain inert
 	// until Metamod removes all hooks owned by this plugin.
 	loaded = false;
 	if (webhook)
