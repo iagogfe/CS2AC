@@ -12,7 +12,7 @@ services:
       - ../:/workspaces/CS2AC
   docker:
     hostname: docker
-    image: docker:29.6-dind-rootless
+    image: docker:29.6-dind-rootless@sha256:212a9e782c7119fd6a212beaab6b7665a29b663d894d0f6201710c89575ad0ae
     privileged: true
     environment:
       - DOCKER_TLS_CERTDIR=/certs

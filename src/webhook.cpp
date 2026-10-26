@@ -763,8 +763,7 @@ std::string WebhookService::BuildPayload(const ReportData &report)
 		"{\"name\":\"%s\",\"value\":\"```text\\n%s\\n```\"},"
 		"{\"name\":\"%s\",\"value\":\"%s\"},"
 		"{\"name\":\"%s\",\"value\":\"`%s`\",\"inline\":true}%s],"
-		"\"timestamp\":\"%s\",\"footer\":{\"text\":\"%s\"%s},"
-		"\"image\":{\"url\":\"https://raw.githubusercontent.com/karola3vax/CS2AC/main/docs/cs2ac-logo.png\"}}]}",
+		"\"timestamp\":\"%s\",\"footer\":{\"text\":\"%s\"%s}}]}",
 		JsonEscape(content), allowed, JsonEscape(serverName), authorIcon, thumbnail, JsonEscape(localization::Get("webhook.field.player", "Player")),
 		JsonEscape(playerValue), JsonEscape(localization::Get("webhook.field.steamid64", "STEAMID64")), JsonEscape(steamIdValue),
 		JsonEscape(localization::Get("webhook.field.detection", "Detection")),

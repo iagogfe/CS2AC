@@ -21,7 +21,7 @@ docker run --rm \
     set -eu
     export DEBIAN_FRONTEND=noninteractive PYTHONPATH=/opt/ambuild
     apt-get update >/dev/null
-    apt-get install -y --no-install-recommends lld >/dev/null
+    apt-get install -y --no-install-recommends lld=1:11.0-51+nmu5 lld-11=1:11.0.1-2 >/dev/null
     test -d '$BUILD_DIR/.ambuild2' || python3 configure.py --enable-optimize --out '$BUILD_DIR'
     python3 -c 'from ambuild2.run import cli_run; cli_run()' '$BUILD_DIR'
   "
