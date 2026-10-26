@@ -116,6 +116,17 @@ You need a Windows or Linux CS2 dedicated server with [Metamod:Source](https://w
 
 This legacy version doesn't receive updates anymore, so it may stop working after a CS2 update.
 
+### No automatic updates in this fork
+
+This fork removed the automatic updater (`cs2ac_auto_update`, the GitHub release downloader, `update/pending.txt` and the `.vdf` swap). CS2AC never downloads or runs remote code. To update, build from source and replace the files yourself.
+
+If you are replacing an upstream build, check that `addons/metamod/cs2ac.vdf` points to `addons/cs2ac/bin/<platform>/cs2ac` (no `-update` suffix) and delete `addons/cs2ac/update/` if it exists. A stale `cs2ac_auto_update` line in an old `cs2ac.cfg` only prints an unknown-command warning.
+
+The only network requests left are the ones an admin configures:
+
+- `cs2ac_webhook_url` (Discord) and `cs2ac_json_webhook_url` (HTTPS JSON): a POST with the detection report.
+- When the Discord webhook is set, a GET to `https://steamcommunity.com/profiles/<steamid64>?xml=1` to fetch the player's avatar URL for the embed. The response is only parsed as text.
+
 ## Settings you may want to change
 
 Everything lives in `game/csgo/cfg/cs2ac.cfg`, and every option is explained there in plain words. After a change, type `cs2ac_reload`.
