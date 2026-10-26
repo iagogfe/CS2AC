@@ -41,6 +41,8 @@ namespace settings
 	std::uint64_t GetRevision();
 	bool ShowChatAnnouncements();
 	bool ShowCenterAnnouncements();
+	bool ShowJoinMessage();
+	const char *GetJoinMessage();
 	const char *GetPunishmentCommand();
 	const char *GetKickCommand();
 	const char *GetWebhookUrl();

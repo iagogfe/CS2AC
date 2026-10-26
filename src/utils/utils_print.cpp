@@ -378,7 +378,7 @@ void utils::AnnounceDetection(const char *detection, const char *playerName, Det
 		const std::string chatBody = localization::Format("announcement.detected", "detected {detection} on {player}{outcome}",
 														  {{"detection", "{lime}%s1{default}"}, {"player", "{grey}%s2{default}"}, {"outcome", "%s3"}})
 										 .localized;
-		const std::string chatTemplate = "{red}[CS2AC]{default} " + chatBody;
+		const std::string chatTemplate = "{red}[Clash Arena]{default} " + chatBody;
 		char coloredChat[512];
 		if (CFormat(coloredChat, sizeof(coloredChat), chatTemplate.c_str()))
 		{
@@ -398,7 +398,7 @@ void utils::AnnounceDetection(const char *detection, const char *playerName, Det
 	ReplaceAll(centerBody, "{detection}", "<span color='#00FF00'>" + safeDetection + "</span>");
 	ReplaceAll(centerBody, "{player}", "<span color='#B0B0B0'>" + safePlayerName + "</span>");
 	ReplaceAll(centerBody, "{outcome}", EscapeHtml(outcomeText.c_str()));
-	ShowCenterMessage("<span class='fontSize-l'><span color='#FF0000'>[CS2AC]</span> <span color='#FFFFFF'>" + centerBody + "</span></span>", true);
+	ShowCenterMessage("<span class='fontSize-l'><span color='#FF0000'>[Clash Arena]</span> <span color='#FFFFFF'>" + centerBody + "</span></span>", true);
 }
 
 void utils::AnnounceTest()
@@ -407,7 +407,7 @@ void utils::AnnounceTest()
 	const std::string localized = localization::Get("announcement.test", text);
 	if (settings::ShowChatAnnouncements())
 	{
-		const std::string chatTemplate = "{red}[CS2AC]{default} " + localized;
+		const std::string chatTemplate = "{red}[Clash Arena]{default} " + localized;
 		char coloredChat[256];
 		if (CFormat(coloredChat, sizeof(coloredChat), chatTemplate.c_str()))
 		{
@@ -422,7 +422,7 @@ void utils::AnnounceTest()
 
 	if (settings::ShowCenterAnnouncements())
 	{
-		ShowCenterMessage("<span class='fontSize-l'><span color='#FF0000'>[CS2AC]</span> <span color='#FFFFFF'>" + EscapeHtml(localized.c_str())
+		ShowCenterMessage("<span class='fontSize-l'><span color='#FF0000'>[Clash Arena]</span> <span color='#FFFFFF'>" + EscapeHtml(localized.c_str())
 						  + "</span></span>");
 	}
 	else
@@ -434,30 +434,27 @@ void utils::AnnounceTest()
 
 void utils::AnnounceWatermarkTo(CPlayerSlot slot, bool centerOnly)
 {
+	// The join message is ours (cs2ac_join_message); it never names the plugin or its author.
+	const char *text = settings::GetJoinMessage();
+	if (!text || !*text)
+	{
+		return;
+	}
 	CSingleRecipientFilter filter(slot);
 	if (!centerOnly)
 	{
-		const auto printChat = [&](const std::string &body, const char *param = "")
+		const std::string message = "{red}[Clash Arena]{default} " + std::string(text);
+		char colored[256];
+		if (CFormat(colored, sizeof(colored), message.c_str()))
 		{
-			const std::string message = "{red}[CS2AC]{default} " + body;
-			char colored[256];
-			if (CFormat(colored, sizeof(colored), message.c_str()))
-			{
-				ClientPrintFilter(&filter, HUD_PRINTTALK, colored, param, "", "", "");
-			}
-		};
-		printChat(localization::Watermark({{"author", "{grey}%s1{default}"}}).localized, "karola3vax");
-		printChat(localization::Format("announcement.support", "Support continued CS2AC development: {url}",
-									   {{"url", "buymeacoffee.com/karola3vax"}})
-					  .localized);
+			ClientPrintFilter(&filter, HUD_PRINTTALK, colored, "", "", "", "");
+		}
 		return;
 	}
 
-	std::string centerBody = EscapeHtml(localization::Watermark().localized.c_str());
-	ReplaceAll(centerBody, "{author}", "<span color='#B0B0B0'>karola3vax</span>");
-	const std::string message =
-		"<span class='fontSize-l'><span color='#FF0000'>[CS2AC]</span> <span color='#FFFFFF'>" + centerBody + "</span></span>";
-	SendDetectionHtml(message.c_str(), 3, &filter);
+	const std::string html =
+		"<span class='fontSize-l'><span color='#FF0000'>[Clash Arena]</span> <span color='#FFFFFF'>" + EscapeHtml(text) + "</span></span>";
+	SendDetectionHtml(html.c_str(), 3, &filter);
 }
 
 void utils::ClearWatermarkFor(CPlayerSlot slot)
