@@ -26,6 +26,7 @@
 #include "utils/gameconfig.h"
 #include "utils/utils.h"
 #include <chrono>
+#include <memory>
 #include <climits>
 #include <cstdio>
 
@@ -40,8 +41,9 @@ constexpr auto QUERYTIMEOUT = std::chrono::seconds(10);
 ClientCvarValue g_ClientCvarValue;
 
 // Metamod build 1461+ has no SourceHook for plugins; the response handler is a KHook vtable hook bound by gamedata offset.
-static KHook::Virtual<CServerSideClient, bool, const CNetMessagePB<CCLCMsg_RespondCvarValue> &> s_RespondCvarValueHook(
-	nullptr, &ClientCvarValue::OnProcessRespondCvarValueHook);
+// Lives from Load to Unload: the handler runs on network threads, so the patch must be gone before Metamod closes
+// the module. Destroying the hook removes it synchronously (unload crash with a human connected, 2026-10-26).
+static std::unique_ptr<KHook::Virtual<CServerSideClient, bool, const CNetMessagePB<CCLCMsg_RespondCvarValue> &>> s_RespondCvarValueHook;
 
 static void SetLoadError(char *error, size_t maxlen, const std::string &message)
 {
@@ -163,7 +165,8 @@ bool ClientCvarValue::Load(IVEngineServer2 *pEngineServer, INetworkMessages *pNe
 
 	INetworkMessageInternal *pGetCvarValueMessage = pNetworkMessages->FindNetworkMessagePartial("CSVCMsg_GetCvarValue");
 	void *pCServerSideClientVTable = DynLibUtils::CModule(pEngineServer).GetVirtualTableByName("CServerSideClient");
-	s_RespondCvarValueHook.Configure(g_pGameConfig->GetOffset("ProcessRespondCvarValue"));
+	s_RespondCvarValueHook.reset(new std::remove_reference_t<decltype(*s_RespondCvarValueHook)>(nullptr, &ClientCvarValue::OnProcessRespondCvarValueHook));
+	s_RespondCvarValueHook->Configure(g_pGameConfig->GetOffset("ProcessRespondCvarValue"));
 	if (!pCServerSideClientVTable)
 	{
 		SetLoadError(error, maxlen,
@@ -173,7 +176,7 @@ bool ClientCvarValue::Load(IVEngineServer2 *pEngineServer, INetworkMessages *pNe
 
 	// AddGlobal reads the vtable through the pointer, so it gets the address of our copy of the vtable pointer.
 	m_pServerSideClientVTable = pCServerSideClientVTable;
-	s_RespondCvarValueHook.AddGlobal(reinterpret_cast<CServerSideClient *>(&m_pServerSideClientVTable));
+	s_RespondCvarValueHook->AddGlobal(reinterpret_cast<CServerSideClient *>(&m_pServerSideClientVTable));
 	m_pEngineServer = pEngineServer;
 	m_pGameEventSystem = pGameEventSystem;
 	m_pGetCvarValueMessage = pGetCvarValueMessage;
@@ -183,8 +186,7 @@ bool ClientCvarValue::Load(IVEngineServer2 *pEngineServer, INetworkMessages *pNe
 
 bool ClientCvarValue::Unload()
 {
-	// ClearHooks only detaches the vtable; the patch itself goes away when Metamod unloads the plugin.
-	s_RespondCvarValueHook.ClearHooks();
+	s_RespondCvarValueHook.reset();
 	m_pServerSideClientVTable = nullptr;
 
 	OnMapReset();
