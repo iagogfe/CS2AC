@@ -7,7 +7,6 @@
 #include "sdk/cgameresourceserviceserver.h"
 #include "sdk/navphysicsinterface.h"
 #include "settings.h"
-#include "updater.h"
 #include "webhook.h"
 #include "utils/addresses.h"
 #include "utils/ctimer.h"
@@ -292,7 +291,6 @@ CON_COMMAND(cs2ac_config_loaded, "Confirm that cs2ac.cfg finished loading")
 bool CS2ACPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late)
 {
 	PLUGIN_SAVEVARS();
-	UpdaterService::ApplyPendingUpdate();
 	if (!settings::Initialize())
 	{
 		if (error && maxlen)
@@ -308,18 +306,6 @@ bool CS2ACPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, b
 		if (error && maxlen)
 		{
 			snprintf(error, maxlen, "CS2AC could not reserve memory for Discord reports.");
-		}
-		return false;
-	}
-	updater = new (std::nothrow) UpdaterService;
-	if (!updater)
-	{
-		delete webhook;
-		webhook = nullptr;
-		settings::Shutdown();
-		if (error && maxlen)
-		{
-			snprintf(error, maxlen, "CS2AC could not reserve memory for automatic updates.");
 		}
 		return false;
 	}
@@ -509,7 +495,6 @@ bool CS2ACPlugin::Activate(char *error, size_t maxlen, bool late)
 	}
 
 	loaded = true;
-	updater->Start();
 	ResetRuntime();
 	configReloadPending = true;
 	configLoadFailed = false;
@@ -611,10 +596,6 @@ void CS2ACPlugin::OnGameFrame(bool simulating)
 	if (webhook)
 	{
 		webhook->OnGameFrame();
-	}
-	if (updater)
-	{
-		updater->OnGameFrame();
 	}
 	ProcessJoinWatermarks();
 }
@@ -830,7 +811,6 @@ void CS2ACPlugin::PrintConfigSummary(bool reloaded) const
 		settings::GetDuplicateWhitelistCount());
 	Msg("[CS2AC] Public announcements: chat %s, center screen %s.\n", settings::ShowChatAnnouncements() ? "on" : "off",
 		settings::ShowCenterAnnouncements() ? "on" : "off");
-	Msg("[CS2AC] Automatic updates: %s.\n", settings::AutomaticUpdatesEnabled() ? "on" : "off");
 	Msg("[CS2AC] Punishments: permanent ban %s, kick %s.\n",
 		settings::GetPunishmentCommand() && *settings::GetPunishmentCommand() ? "configured" : "disabled",
 		settings::GetKickCommand() && *settings::GetKickCommand() ? "configured" : "disabled");
@@ -1091,12 +1071,6 @@ void CS2ACPlugin::CleanupRuntime()
 		webhook->Unload();
 		delete webhook;
 		webhook = nullptr;
-	}
-	if (updater)
-	{
-		updater->Unload();
-		delete updater;
-		updater = nullptr;
 	}
 	bool sourceHooksRemoved = hooks::Cleanup();
 	utils::ResetDetectionAnnouncement();

@@ -41,7 +41,6 @@ namespace settings
 	std::uint64_t GetRevision();
 	bool ShowChatAnnouncements();
 	bool ShowCenterAnnouncements();
-	bool AutomaticUpdatesEnabled();
 	const char *GetPunishmentCommand();
 	const char *GetKickCommand();
 	const char *GetWebhookUrl();
