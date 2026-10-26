@@ -360,7 +360,7 @@ bool CS2ACPlugin::QueryRunning(char *error, size_t maxlen)
 bool CS2ACPlugin::Activate(char *error, size_t maxlen, bool late)
 {
 	std::vector<std::string> missing;
-	if (!g_SHPtr)
+	if (!KHook::__exported__khook)
 	{
 		missing.emplace_back("Metamod's hook service is unavailable.");
 	}
@@ -516,7 +516,6 @@ bool CS2ACPlugin::Activate(char *error, size_t maxlen, bool late)
 		hooks::HookActivePlayers();
 	}
 	Msg("[CS2AC] CS2AC %s loaded successfully. Waiting for cs2ac.cfg to finish.\n", PLUGIN_FULL_VERSION);
-	Msg("[CS2AC] Support continued CS2AC development: buymeacoffee.com/karola3vax\n");
 	return true;
 }
 
@@ -716,7 +715,7 @@ void CS2ACPlugin::OnClientFullyConnect(CPlayerSlot slot)
 	auto *player = g_pCS2ACPlayerManager->ToPlayer(slot);
 	detectionSystem.OnClientReady(player);
 	const int index = slot.Get() + 1;
-	if (player && index > 0 && index <= MAXPLAYERS && !player->IsFakeClient() && !player->IsCSTV() && !joinWatermarks[index].shown
+	if (settings::ShowJoinMessage() && player && index > 0 && index <= MAXPLAYERS && !player->IsFakeClient() && !player->IsCSTV() && !joinWatermarks[index].shown
 		&& !joinWatermarks[index].pending)
 	{
 		joinWatermarks[index].showAt = std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -1039,7 +1038,6 @@ void CS2ACPlugin::PrintStatus() const
 	Msg("[CS2AC] JSON webhook: %s.\n",
 		webhook && webhook->IsJsonConfigured() ? (webhook->IsJsonDisabled() ? "disabled after an error" : "configured") : "not configured");
 	Msg("[CS2AC] sv_cheats testing: %s.\n", MovementDetectionService::IsSvCheatsTestingAllowed() ? "allowed" : "not allowed");
-	Msg("[CS2AC] Support continued CS2AC development: buymeacoffee.com/karola3vax\n");
 }
 
 void CS2ACPlugin::ResetRuntime()
@@ -1063,7 +1061,7 @@ void CS2ACPlugin::ResetRuntime()
 
 void CS2ACPlugin::CleanupRuntime()
 {
-	// Any exceptional SourceHook that survives manual cleanup must remain inert
+	// Any exceptional KHook that survives manual cleanup must remain inert
 	// until Metamod removes all hooks owned by this plugin.
 	loaded = false;
 	if (webhook)

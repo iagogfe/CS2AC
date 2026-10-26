@@ -18,6 +18,7 @@
 #define CLIENT_CVAR_VALUE_COMPONENT_H
 
 #include "iclientcvarvalue.h"
+#include <khook.hpp>
 #include <networksystem/netmessage.h>
 #include <netmessages.pb.h>
 #include <array>
@@ -28,6 +29,7 @@
 #include <unordered_map>
 #include <utility>
 
+class CServerSideClient;
 class IGameEventSystem;
 class INetworkMessageInternal;
 class INetworkMessages;
@@ -43,18 +45,21 @@ public:
 	void OnClientDisconnect(CPlayerSlot nSlot);
 	void OnMapReset();
 
+	// Called by the KHook vtable hook on CServerSideClient::ProcessRespondCvarValue.
+	static KHook::Return<bool> OnProcessRespondCvarValueHook(CServerSideClient *client, const CNetMessagePB<CCLCMsg_RespondCvarValue> &msg);
+
 	IClientCvarValue *GetInterface()
 	{
 		return this;
 	}
 
 private:
-	bool OnProcessRespondCvarValue(const CNetMessagePB<CCLCMsg_RespondCvarValue> &msg);
+	void OnProcessRespondCvarValue(void *client, const CNetMessagePB<CCLCMsg_RespondCvarValue> &msg);
 	int SendCvarValueQueryToClient(CPlayerSlot nSlot, const char *pszCvarName, int iQueryCvarCookieOverride = -1);
 	int NextQueryCookie();
 	bool IsQueryCookieInUse(int cookie) const;
 
-	int m_iProcessRespondCvarValueID = 0;
+	void *m_pServerSideClientVTable = nullptr;
 	int m_iClientSlotOffset = -1;
 	uint32_t m_iQueryCvarCookieCounter = 0;
 	IVEngineServer2 *m_pEngineServer = nullptr;

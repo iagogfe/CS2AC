@@ -106,6 +106,9 @@ namespace
 										 OnDetectionSettingChanged};
 		CConVar<bool> chatAnnouncements {"cs2ac_chat_announcements", FCVAR_NONE, "Show CS2AC detections in public chat", true};
 		CConVar<bool> centerAnnouncements {"cs2ac_center_announcements", FCVAR_NONE, "Show CS2AC detections in the center of the screen", true};
+		CConVar<bool> joinMessageEnabled {"cs2ac_join_message_enabled", FCVAR_NONE, "Show the join message to each player shortly after they join", false};
+		CConVar<CUtlString> joinMessage {"cs2ac_join_message", FCVAR_NONE, "Join message shown in chat and the center of the screen",
+			CUtlString("Este servidor é protegido pelo anticheat da Clash Arena.")};
 		CConVar<CUtlString> punishmentCommand {"cs2ac_punishment_command", FCVAR_NONE, "Command run for permanent-ban detections",
 											   CUtlString("css_addban {steamid64} 0 CS2AC: {detection}")};
 		CConVar<CUtlString> kickCommand {"cs2ac_kick_command", FCVAR_NONE, "Command run for kick-only detections",
@@ -279,6 +282,16 @@ bool settings::ShowChatAnnouncements()
 bool settings::ShowCenterAnnouncements()
 {
 	return configuration && configuration->centerAnnouncements.GetBool();
+}
+
+bool settings::ShowJoinMessage()
+{
+	return configuration && configuration->joinMessageEnabled.GetBool();
+}
+
+const char *settings::GetJoinMessage()
+{
+	return configuration ? configuration->joinMessage.Get().Get() : "";
 }
 
 const char *settings::GetPunishmentCommand()

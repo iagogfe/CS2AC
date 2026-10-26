@@ -12,28 +12,11 @@
 #include "iserver.h"
 #include "cs_gameevents.pb.h"
 
-SH_DECL_MANUALHOOK3_void(Teleport, 0, 0, 0, const Vector *, const QAngle *, const Vector *);
-SH_DECL_HOOK3_void(ISource2Server, GameFrame, SH_NOATTRIB, false, bool, bool, bool);
-SH_DECL_HOOK1_void(ISource2GameClients, ClientFullyConnect, SH_NOATTRIB, false, CPlayerSlot);
-SH_DECL_HOOK1_void(ISource2GameClients, ClientSettingsChanged, SH_NOATTRIB, false, CPlayerSlot);
-SH_DECL_HOOK4_void(ISource2GameClients, ClientActive, SH_NOATTRIB, false, CPlayerSlot, bool, const char *, uint64);
-SH_DECL_HOOK5_void(ISource2GameClients, ClientDisconnect, SH_NOATTRIB, false, CPlayerSlot, ENetworkDisconnectionReason, const char *, uint64,
-				   const char *);
-SH_DECL_HOOK2(IGameEventManager2, FireEvent, SH_NOATTRIB, false, bool, IGameEvent *, bool);
-SH_DECL_HOOK8_void(IGameEventSystem, PostEventAbstract, SH_NOATTRIB, false, CSplitScreenSlot, bool, int, const uint64 *, INetworkMessageInternal *,
-				   const CNetMessage *, unsigned long, NetChannelBufType_t);
-
+// Metamod 2.0 build 1461+ (0cc4e20) dropped SourceHook for plugins; hooks use KHook, as in cs2kz c53844b.
 namespace
 {
-	struct HookEntry
-	{
-		i32 id;
-		const char *name;
-	};
-
-	CUtlVector<HookEntry> hookIds;
-	i32 gameFrameHookId {};
-	i32 teleportHooks[MAXPLAYERS] {};
+	// KHook keeps a vtable hook installed per vtable; Add/Remove only choose which pawns reach the callback.
+	CBaseEntity *teleportPawns[MAXPLAYERS] {};
 
 	struct PendingGameEvent
 	{
@@ -71,11 +54,11 @@ namespace
 		return userID < 0 ? nullptr : g_pCS2ACPlayerManager->ToPlayer(CPlayerUserId(userID));
 	}
 
-	bool HookFireEventBefore(IGameEvent *event, bool)
+	KHook::Return<bool> HookFireEventBefore(IGameEventManager2 *, IGameEvent *event, bool)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META_VALUE(MRES_IGNORED, true);
+			return {KHook::Action::Ignore, true};
 		}
 		PendingGameEvent pending {};
 		if (IsConsumedEvent(event))
@@ -83,33 +66,33 @@ namespace
 			pending = {interfaces::pGameEventManager->DuplicateEvent(event), ResolveEventPlayer(event)};
 		}
 		pendingGameEvents.push_back(pending);
-		RETURN_META_VALUE(MRES_IGNORED, true);
+		return {KHook::Action::Ignore, true};
 	}
 
-	void HookPostEvent(CSplitScreenSlot, bool, int, const uint64 *, INetworkMessageInternal *event, const CNetMessage *data, unsigned long,
-					   NetChannelBufType_t)
+	KHook::Return<void> HookPostEvent(IGameEventSystem *, CSplitScreenSlot, bool, int, const uint64 *, INetworkMessageInternal *event,
+									  const CNetMessage *data, unsigned long, NetChannelBufType_t)
 	{
 		if (!g_CS2AC.IsLoaded() || !event || !data)
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		auto *info = event->GetNetMessageInfo();
 		if (!info)
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		if (info->m_MessageId == GE_FireBulletsId)
 		{
 			g_CS2AC.OnFireBullets(*data->ToPB<CMsgTEFireBullets>());
 		}
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
 	}
 
-	bool HookFireEventAfter(IGameEvent *, bool)
+	KHook::Return<bool> HookFireEventAfter(IGameEventManager2 *, IGameEvent *, bool)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META_VALUE(MRES_IGNORED, true);
+			return {KHook::Action::Ignore, true};
 		}
 		PendingGameEvent pending {};
 		if (!pendingGameEvents.empty())
@@ -128,36 +111,33 @@ namespace
 			}
 			interfaces::pGameEventManager->FreeEvent(pending.event);
 		}
-		RETURN_META_VALUE(MRES_IGNORED, true);
+		return {KHook::Action::Ignore, true};
 	}
 
-	void HookTeleport(const Vector *origin, const QAngle *angles, const Vector *velocity)
+	KHook::Return<void> HookTeleport(CBaseEntity *pawn, const Vector *origin, const QAngle *angles, const Vector *velocity)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
-		auto *pawn = META_IFACEPTR(CCSPlayerPawn);
 		auto *current = g_pCS2ACPlayerManager->ToPlayer(static_cast<CBasePlayerPawn *>(pawn));
 		if (current)
 		{
 			current->OnTeleport(origin, angles, velocity);
 		}
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
 	}
+
+	KHook::Virtual<CBaseEntity, void, const Vector *, const QAngle *, const Vector *> teleportHook(HookTeleport, nullptr);
 
 	bool RemoveTeleportHook(CPlayerSlot slot)
 	{
-		if (slot.Get() < 0 || slot.Get() >= MAXPLAYERS || !teleportHooks[slot.Get()])
+		if (slot.Get() < 0 || slot.Get() >= MAXPLAYERS || !teleportPawns[slot.Get()])
 		{
 			return true;
 		}
-		if (!SH_REMOVE_HOOK_ID(teleportHooks[slot.Get()]))
-		{
-			Warning("[CS2AC] The player teleport hook for slot %d could not be removed yet. Metamod will try again during unload.\n", slot.Get());
-			return false;
-		}
-		teleportHooks[slot.Get()] = 0;
+		teleportHook.Remove(teleportPawns[slot.Get()]);
+		teleportPawns[slot.Get()] = nullptr;
 		return true;
 	}
 
@@ -167,37 +147,31 @@ namespace
 		{
 			return false;
 		}
-		if (!RemoveTeleportHook(player->GetPlayerSlot()))
-		{
-			return false;
-		}
-		teleportHooks[player->GetPlayerSlot().Get()] = SH_ADD_MANUALHOOK(Teleport, player->GetPlayerPawn(), SH_STATIC(HookTeleport), false);
-		if (!teleportHooks[player->GetPlayerSlot().Get()])
-		{
-			Warning("[CS2AC] Player teleport tracking could not be attached for %s.\n", player->GetName());
-			return false;
-		}
+		RemoveTeleportHook(player->GetPlayerSlot());
+		CBaseEntity *pawn = player->GetPlayerPawn();
+		teleportHook.Add(pawn);
+		teleportPawns[player->GetPlayerSlot().Get()] = pawn;
 		return true;
 	}
 
-	void HookGameFrameBefore(bool, bool, bool)
+	KHook::Return<void> HookGameFrameBefore(ISource2Server *, bool, bool, bool)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		if (auto *globals = g_pCS2ACUtils->GetGlobals())
 		{
 			g_CS2AC.serverGlobals = *globals;
 		}
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
 	}
 
-	void HookGameFrameAfter(bool simulating, bool, bool)
+	KHook::Return<void> HookGameFrameAfter(ISource2Server *, bool simulating, bool, bool)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		if (auto *globals = g_pCS2ACUtils->GetGlobals())
 		{
@@ -206,36 +180,36 @@ namespace
 		g_CS2AC.OnGameFrame(simulating);
 		ProcessTimers();
 		MovementEventService::ActiveCheck();
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
 	}
 
-	void HookClientFullyConnect(CPlayerSlot slot)
+	KHook::Return<void> HookClientFullyConnect(ISource2GameClients *, CPlayerSlot slot)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		g_pCS2ACPlayerManager->OnClientFullyConnect(slot);
 		g_ClientCvarValue.OnClientFullyConnected(slot, g_pCS2ACPlayerManager->ToPlayer(slot)->IsFakeClient());
 		g_CS2AC.OnClientFullyConnect(slot);
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
 	}
 
-	void HookClientSettingsChanged(CPlayerSlot slot)
+	KHook::Return<void> HookClientSettingsChanged(ISource2GameClients *, CPlayerSlot slot)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		g_CS2AC.OnClientSettingsChanged(slot);
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
 	}
 
-	void HookClientActive(CPlayerSlot slot, bool, const char *, uint64 xuid)
+	KHook::Return<void> HookClientActive(ISource2GameClients *, CPlayerSlot slot, bool, const char *, uint64 xuid)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		g_pCS2ACPlayerManager->OnClientActive(slot, xuid);
 		auto *player = g_pCS2ACPlayerManager->ToPlayer(slot);
@@ -243,54 +217,62 @@ namespace
 		{
 			AddTeleportHook(player);
 		}
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
 	}
 
-	void HookClientDisconnect(CPlayerSlot slot, ENetworkDisconnectionReason, const char *, uint64, const char *)
+	KHook::Return<void> HookClientDisconnect(ISource2GameClients *, CPlayerSlot slot, ENetworkDisconnectionReason, const char *, uint64,
+											 const char *)
 	{
 		if (!g_CS2AC.IsLoaded())
 		{
-			RETURN_META(MRES_IGNORED);
+			return {KHook::Action::Ignore};
 		}
 		RemoveTeleportHook(slot);
 		g_ClientCvarValue.OnClientDisconnect(slot);
 		g_CS2AC.OnClientDisconnect(slot);
 		g_pCS2ACPlayerManager->OnClientDisconnect(slot);
-		RETURN_META(MRES_IGNORED);
+		return {KHook::Action::Ignore};
+	}
+
+	KHook::Virtual<ISource2Server, void, bool, bool, bool> gameFrameHook(&ISource2Server::GameFrame, HookGameFrameBefore, HookGameFrameAfter);
+	KHook::Virtual<ISource2GameClients, void, CPlayerSlot> clientFullyConnectHook(&ISource2GameClients::ClientFullyConnect, nullptr,
+																				   HookClientFullyConnect);
+	KHook::Virtual<ISource2GameClients, void, CPlayerSlot> clientSettingsChangedHook(&ISource2GameClients::ClientSettingsChanged, nullptr,
+																					  HookClientSettingsChanged);
+	KHook::Virtual<ISource2GameClients, void, CPlayerSlot, bool, const char *, uint64> clientActiveHook(&ISource2GameClients::ClientActive, nullptr,
+																										 HookClientActive);
+	KHook::Virtual<ISource2GameClients, void, CPlayerSlot, ENetworkDisconnectionReason, const char *, uint64, const char *>
+		clientDisconnectHook(&ISource2GameClients::ClientDisconnect, nullptr, HookClientDisconnect);
+	KHook::Virtual<IGameEventManager2, bool, IGameEvent *, bool> fireEventHook(&IGameEventManager2::FireEvent, HookFireEventBefore,
+																			   HookFireEventAfter);
+	KHook::Virtual<IGameEventSystem, void, CSplitScreenSlot, bool, int, const uint64 *, INetworkMessageInternal *, const CNetMessage *,
+				   unsigned long, NetChannelBufType_t>
+		postEventHook(&IGameEventSystem::PostEventAbstract, HookPostEvent, nullptr);
+
+	template<typename HOOK, typename TARGET>
+	void AttachHook(HOOK &hook, TARGET *target, const char *name, std::vector<std::string> &missing)
+	{
+		if (!target)
+		{
+			missing.emplace_back(std::string("The ") + name + " server hook could not be started.");
+			return;
+		}
+		hook.Add(target);
 	}
 
 } // namespace
 
 bool hooks::Initialize(std::vector<std::string> &missing)
 {
-	SH_MANUALHOOK_RECONFIGURE(Teleport, g_pGameConfig->GetOffset("Teleport"), 0, 0);
+	teleportHook.Configure(g_pGameConfig->GetOffset("Teleport"));
 
-	auto add = [&](i32 id, const char *name)
-	{
-		if (id)
-		{
-			hookIds.AddToTail({id, name});
-		}
-		else
-		{
-			missing.emplace_back(std::string("The ") + name + " server hook could not be started.");
-		}
-	};
-	add(SH_ADD_HOOK(ISource2Server, GameFrame, interfaces::pServer, SH_STATIC(HookGameFrameBefore), false), "game frame preparation");
-	gameFrameHookId = SH_ADD_HOOK(ISource2Server, GameFrame, interfaces::pServer, SH_STATIC(HookGameFrameAfter), true);
-	if (!gameFrameHookId)
-	{
-		missing.emplace_back("The game frame server hook could not be started.");
-	}
-	add(SH_ADD_HOOK(ISource2GameClients, ClientFullyConnect, g_pSource2GameClients, SH_STATIC(HookClientFullyConnect), true),
-		"fully connected player");
-	add(SH_ADD_HOOK(ISource2GameClients, ClientSettingsChanged, g_pSource2GameClients, SH_STATIC(HookClientSettingsChanged), true),
-		"player setting update");
-	add(SH_ADD_HOOK(ISource2GameClients, ClientActive, g_pSource2GameClients, SH_STATIC(HookClientActive), true), "active player");
-	add(SH_ADD_HOOK(ISource2GameClients, ClientDisconnect, g_pSource2GameClients, SH_STATIC(HookClientDisconnect), true), "disconnecting player");
-	add(SH_ADD_HOOK(IGameEventManager2, FireEvent, interfaces::pGameEventManager, SH_STATIC(HookFireEventBefore), false), "game event preparation");
-	add(SH_ADD_HOOK(IGameEventManager2, FireEvent, interfaces::pGameEventManager, SH_STATIC(HookFireEventAfter), true), "completed game event");
-	add(SH_ADD_HOOK(IGameEventSystem, PostEventAbstract, interfaces::pGameEventSystem, SH_STATIC(HookPostEvent), false), "weapon telemetry");
+	AttachHook(gameFrameHook, interfaces::pServer, "game frame", missing);
+	AttachHook(clientFullyConnectHook, g_pSource2GameClients, "fully connected player", missing);
+	AttachHook(clientSettingsChangedHook, g_pSource2GameClients, "player setting update", missing);
+	AttachHook(clientActiveHook, g_pSource2GameClients, "active player", missing);
+	AttachHook(clientDisconnectHook, g_pSource2GameClients, "disconnecting player", missing);
+	AttachHook(fireEventHook, interfaces::pGameEventManager, "game event", missing);
+	AttachHook(postEventHook, interfaces::pGameEventSystem, "weapon telemetry", missing);
 
 	if (!missing.empty())
 	{
@@ -314,41 +296,25 @@ void hooks::HookActivePlayers()
 
 bool hooks::ResetMap()
 {
-	bool removed = true;
 	for (i32 slot = 0; slot < MAXPLAYERS; ++slot)
 	{
-		removed = RemoveTeleportHook(CPlayerSlot(slot)) && removed;
+		RemoveTeleportHook(CPlayerSlot(slot));
 	}
-	return removed;
+	return true;
 }
 
 bool hooks::Cleanup()
 {
-	bool removed = ResetMap();
-	if (gameFrameHookId)
-	{
-		if (SH_REMOVE_HOOK_ID(gameFrameHookId))
-		{
-			gameFrameHookId = 0;
-		}
-		else
-		{
-			Warning("[CS2AC] The completed game frame hook could not be removed yet. Metamod will try again during unload.\n");
-			removed = false;
-		}
-	}
-	for (i32 i = hookIds.Count() - 1; i >= 0; --i)
-	{
-		if (SH_REMOVE_HOOK_ID(hookIds[i].id))
-		{
-			hookIds.Remove(i);
-		}
-		else
-		{
-			Warning("[CS2AC] The %s hook could not be removed yet. Metamod will try again during unload.\n", hookIds[i].name);
-			removed = false;
-		}
-	}
+	// ClearHooks only detaches our targets; the vtable patches go away when Metamod unloads the plugin.
+	ResetMap();
+	teleportHook.ClearHooks();
+	gameFrameHook.ClearHooks();
+	clientFullyConnectHook.ClearHooks();
+	clientSettingsChangedHook.ClearHooks();
+	clientActiveHook.ClearHooks();
+	clientDisconnectHook.ClearHooks();
+	fireEventHook.ClearHooks();
+	postEventHook.ClearHooks();
 	if (interfaces::pGameEventManager)
 	{
 		for (const auto &pending : pendingGameEvents)
@@ -360,5 +326,5 @@ bool hooks::Cleanup()
 		}
 	}
 	pendingGameEvents.clear();
-	return removed;
+	return true;
 }

@@ -7,8 +7,9 @@ class MMSPluginConfig(object):
   def __init__(self):
     self.mms_root = self.requireDirectory(
       os.path.join(builder.sourcePath, 'metamod-source'), 'Metamod:Source')
+    # Metamod build 1461+ ships s2sdk-only manifests (no public/tier1); keep the hl2sdk layout pinned here.
     manifests_root = self.requireDirectory(
-      os.path.join(self.mms_root, 'hl2sdk-manifests'), 'HL2SDK manifests')
+      os.path.join(builder.sourcePath, 'hl2sdk-manifests'), 'HL2SDK manifests')
 
     self.sdk_helpers = builder.Eval(os.path.join(manifests_root, 'SdkHelpers.ambuild'), {
       'Project': 'metamod'
@@ -183,7 +184,7 @@ class MMSPluginConfig(object):
     cxx.cxxincludes += [
       context.currentSourcePath,
       os.path.join(self.mms_root, 'core'),
-      os.path.join(self.mms_root, 'core', 'sourcehook'),
+      os.path.join(self.mms_root, 'third_party', 'khook', 'include'),
     ]
 
     for manifest in self.sdk_manifests:
