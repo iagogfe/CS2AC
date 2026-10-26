@@ -12,6 +12,8 @@
 #include "iserver.h"
 #include "cs_gameevents.pb.h"
 
+#include <memory>
+
 // Metamod 2.0 build 1461+ (0cc4e20) dropped SourceHook for plugins; hooks use KHook, as in cs2kz c53844b.
 namespace
 {
@@ -128,7 +130,9 @@ namespace
 		return {KHook::Action::Ignore};
 	}
 
-	KHook::Virtual<CBaseEntity, void, const Vector *, const QAngle *, const Vector *> teleportHook(HookTeleport, nullptr);
+	// The hooks live from Initialize to Cleanup: destroying one removes its vtable patch synchronously, so no
+	// game or network thread can enter this module after Unload returns and Metamod closes it (unload crash, 2026-10-26).
+	std::unique_ptr<KHook::Virtual<CBaseEntity, void, const Vector *, const QAngle *, const Vector *>> teleportHook;
 
 	bool RemoveTeleportHook(CPlayerSlot slot)
 	{
@@ -136,20 +140,23 @@ namespace
 		{
 			return true;
 		}
-		teleportHook.Remove(teleportPawns[slot.Get()]);
+		if (teleportHook)
+		{
+			teleportHook->Remove(teleportPawns[slot.Get()]);
+		}
 		teleportPawns[slot.Get()] = nullptr;
 		return true;
 	}
 
 	bool AddTeleportHook(MovementPlayer *player)
 	{
-		if (!player || !player->GetPlayerPawn())
+		if (!teleportHook || !player || !player->GetPlayerPawn())
 		{
 			return false;
 		}
 		RemoveTeleportHook(player->GetPlayerSlot());
 		CBaseEntity *pawn = player->GetPlayerPawn();
-		teleportHook.Add(pawn);
+		teleportHook->Add(pawn);
 		teleportPawns[player->GetPlayerSlot().Get()] = pawn;
 		return true;
 	}
@@ -234,20 +241,16 @@ namespace
 		return {KHook::Action::Ignore};
 	}
 
-	KHook::Virtual<ISource2Server, void, bool, bool, bool> gameFrameHook(&ISource2Server::GameFrame, HookGameFrameBefore, HookGameFrameAfter);
-	KHook::Virtual<ISource2GameClients, void, CPlayerSlot> clientFullyConnectHook(&ISource2GameClients::ClientFullyConnect, nullptr,
-																				   HookClientFullyConnect);
-	KHook::Virtual<ISource2GameClients, void, CPlayerSlot> clientSettingsChangedHook(&ISource2GameClients::ClientSettingsChanged, nullptr,
-																					  HookClientSettingsChanged);
-	KHook::Virtual<ISource2GameClients, void, CPlayerSlot, bool, const char *, uint64> clientActiveHook(&ISource2GameClients::ClientActive, nullptr,
-																										 HookClientActive);
-	KHook::Virtual<ISource2GameClients, void, CPlayerSlot, ENetworkDisconnectionReason, const char *, uint64, const char *>
-		clientDisconnectHook(&ISource2GameClients::ClientDisconnect, nullptr, HookClientDisconnect);
-	KHook::Virtual<IGameEventManager2, bool, IGameEvent *, bool> fireEventHook(&IGameEventManager2::FireEvent, HookFireEventBefore,
-																			   HookFireEventAfter);
-	KHook::Virtual<IGameEventSystem, void, CSplitScreenSlot, bool, int, const uint64 *, INetworkMessageInternal *, const CNetMessage *,
-				   unsigned long, NetChannelBufType_t>
-		postEventHook(&IGameEventSystem::PostEventAbstract, HookPostEvent, nullptr);
+	std::unique_ptr<KHook::Virtual<ISource2Server, void, bool, bool, bool>> gameFrameHook;
+	std::unique_ptr<KHook::Virtual<ISource2GameClients, void, CPlayerSlot>> clientFullyConnectHook;
+	std::unique_ptr<KHook::Virtual<ISource2GameClients, void, CPlayerSlot>> clientSettingsChangedHook;
+	std::unique_ptr<KHook::Virtual<ISource2GameClients, void, CPlayerSlot, bool, const char *, uint64>> clientActiveHook;
+	std::unique_ptr<KHook::Virtual<ISource2GameClients, void, CPlayerSlot, ENetworkDisconnectionReason, const char *, uint64, const char *>>
+		clientDisconnectHook;
+	std::unique_ptr<KHook::Virtual<IGameEventManager2, bool, IGameEvent *, bool>> fireEventHook;
+	std::unique_ptr<KHook::Virtual<IGameEventSystem, void, CSplitScreenSlot, bool, int, const uint64 *, INetworkMessageInternal *,
+								 const CNetMessage *, unsigned long, NetChannelBufType_t>>
+		postEventHook;
 
 	template<typename HOOK, typename TARGET>
 	void AttachHook(HOOK &hook, TARGET *target, const char *name, std::vector<std::string> &missing)
@@ -264,15 +267,23 @@ namespace
 
 bool hooks::Initialize(std::vector<std::string> &missing)
 {
-	teleportHook.Configure(g_pGameConfig->GetOffset("Teleport"));
+	teleportHook.reset(new std::remove_reference_t<decltype(*teleportHook)>(HookTeleport, nullptr));
+	teleportHook->Configure(g_pGameConfig->GetOffset("Teleport"));
+	gameFrameHook.reset(new std::remove_reference_t<decltype(*gameFrameHook)>(&ISource2Server::GameFrame, HookGameFrameBefore, HookGameFrameAfter));
+	clientFullyConnectHook.reset(new std::remove_reference_t<decltype(*clientFullyConnectHook)>(&ISource2GameClients::ClientFullyConnect, nullptr, HookClientFullyConnect));
+	clientSettingsChangedHook.reset(new std::remove_reference_t<decltype(*clientSettingsChangedHook)>(&ISource2GameClients::ClientSettingsChanged, nullptr, HookClientSettingsChanged));
+	clientActiveHook.reset(new std::remove_reference_t<decltype(*clientActiveHook)>(&ISource2GameClients::ClientActive, nullptr, HookClientActive));
+	clientDisconnectHook.reset(new std::remove_reference_t<decltype(*clientDisconnectHook)>(&ISource2GameClients::ClientDisconnect, nullptr, HookClientDisconnect));
+	fireEventHook.reset(new std::remove_reference_t<decltype(*fireEventHook)>(&IGameEventManager2::FireEvent, HookFireEventBefore, HookFireEventAfter));
+	postEventHook.reset(new std::remove_reference_t<decltype(*postEventHook)>(&IGameEventSystem::PostEventAbstract, HookPostEvent, nullptr));
 
-	AttachHook(gameFrameHook, interfaces::pServer, "game frame", missing);
-	AttachHook(clientFullyConnectHook, g_pSource2GameClients, "fully connected player", missing);
-	AttachHook(clientSettingsChangedHook, g_pSource2GameClients, "player setting update", missing);
-	AttachHook(clientActiveHook, g_pSource2GameClients, "active player", missing);
-	AttachHook(clientDisconnectHook, g_pSource2GameClients, "disconnecting player", missing);
-	AttachHook(fireEventHook, interfaces::pGameEventManager, "game event", missing);
-	AttachHook(postEventHook, interfaces::pGameEventSystem, "weapon telemetry", missing);
+	AttachHook(*gameFrameHook, interfaces::pServer, "game frame", missing);
+	AttachHook(*clientFullyConnectHook, g_pSource2GameClients, "fully connected player", missing);
+	AttachHook(*clientSettingsChangedHook, g_pSource2GameClients, "player setting update", missing);
+	AttachHook(*clientActiveHook, g_pSource2GameClients, "active player", missing);
+	AttachHook(*clientDisconnectHook, g_pSource2GameClients, "disconnecting player", missing);
+	AttachHook(*fireEventHook, interfaces::pGameEventManager, "game event", missing);
+	AttachHook(*postEventHook, interfaces::pGameEventSystem, "weapon telemetry", missing);
 
 	if (!missing.empty())
 	{
@@ -305,16 +316,16 @@ bool hooks::ResetMap()
 
 bool hooks::Cleanup()
 {
-	// ClearHooks only detaches our targets; the vtable patches go away when Metamod unloads the plugin.
+	// Destroying each hook removes its vtable patch now, while this module is still loaded.
 	ResetMap();
-	teleportHook.ClearHooks();
-	gameFrameHook.ClearHooks();
-	clientFullyConnectHook.ClearHooks();
-	clientSettingsChangedHook.ClearHooks();
-	clientActiveHook.ClearHooks();
-	clientDisconnectHook.ClearHooks();
-	fireEventHook.ClearHooks();
-	postEventHook.ClearHooks();
+	teleportHook.reset();
+	gameFrameHook.reset();
+	clientFullyConnectHook.reset();
+	clientSettingsChangedHook.reset();
+	clientActiveHook.reset();
+	clientDisconnectHook.reset();
+	fireEventHook.reset();
+	postEventHook.reset();
 	if (interfaces::pGameEventManager)
 	{
 		for (const auto &pending : pendingGameEvents)
